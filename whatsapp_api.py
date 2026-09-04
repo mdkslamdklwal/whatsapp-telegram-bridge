@@ -6,41 +6,6 @@ from config import WHATSAPP_ACCESS_TOKEN
 BASE_URL = "https://graph.facebook.com/v25.0"
 
 
-def test_access_token():
-
-    token = WHATSAPP_ACCESS_TOKEN
-
-    print("========== TOKEN DIAGNOSTIC ==========", flush=True)
-
-    if token is None:
-        print("TOKEN STATUS: MISSING", flush=True)
-        return
-
-    print("TOKEN LENGTH:", len(token), flush=True)
-    print("STARTS WITH EA:", token.startswith("EA"), flush=True)
-    print("HAS BEARER:", token.startswith("Bearer"), flush=True)
-    print("HAS LEADING SPACE:", token != token.lstrip(), flush=True)
-    print("HAS TRAILING SPACE:", token != token.rstrip(), flush=True)
-    print("HAS NEWLINE:", "\n" in token or "\r" in token, flush=True)
-    print(
-        "HAS QUOTES:",
-        token.startswith('"') or token.endswith('"')
-        or token.startswith("'") or token.endswith("'"),
-        flush=True
-    )
-
-    url = f"{BASE_URL}/1197057296831033"
-
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-
-    response = requests.get(url, headers=headers)
-
-    print("HTTP STATUS:", response.status_code, flush=True)
-    print("RESPONSE:", response.text, flush=True)
-    print("=======================================", flush=True)
-
 def get_media_url(media_id):
 
     url = f"{BASE_URL}/{media_id}"
@@ -55,9 +20,6 @@ def get_media_url(media_id):
 
 
 def download_media(media_id):
-
-    # TEMPORARY: test the token before downloading the image
-    test_access_token()
 
     media = get_media_url(media_id)
 
@@ -87,7 +49,3 @@ def download_media(media_id):
         f.write(response.content)
 
     return filename
-
-
-if __name__ == "__main__":
-    test_access_token()
