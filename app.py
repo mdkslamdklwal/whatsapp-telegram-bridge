@@ -14,48 +14,53 @@ def home():
     return "WhatsApp Bridge Running!"
 
 
-@app.route("/webhook", methods=["GET"])
-def verify():
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return challenge, 200
-
-    return "Verification failed", 403
-
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
 
-    print(data)
+    print("========== WEBHOOK RECEIVED ==========", flush=True)
+    print(data, flush=True)
 
     try:
         entry = data["entry"][0]
         change = entry["changes"][0]
         value = change["value"]
 
+        print("VALUE RECEIVED", flush=True)
+
         if "messages" not in value:
+            print("No messages in webhook", flush=True)
             return "OK", 200
 
         message = value["messages"][0]
+
         message_id = message["id"]
-        print("MESSAGE ID:", message_id)
-        print("TIMESTAMP:", message["timestamp"])
+        message_type = message["type"]
+
+        print("MESSAGE ID:", message_id, flush=True)
+        print("MESSAGE TYPE:", message_type, flush=True)
+        print("TIMESTAMP:", message["timestamp"], flush=True)
 
         if message_id in processed_messages:
-            print("Duplicate ignored:", message_id)
+            print("Duplicate ignored:", message_id, flush=True)
             return "OK", 200
+
         processed_messages.add(message_id)
+
         sender = message["from"]
         contact_name = sender
-        
+
         if "contacts" in value:
             contact_name = value["contacts"][0]["profile"]["name"]
 
-        if message["type"] == "text":
+        print("SENDER:", sender, flush=True)
+        print("CONTACT:", contact_name, flush=True)
+
+        # TEXT
+        if message_type == "text":
+
+            print("Processing TEXT", flush=True)
+
             text = message["text"]["body"]
 
             send_message(
@@ -65,12 +70,24 @@ def webhook():
                 f"💬 {text}"
             )
 
-        elif message["type"] == "image":
+            print("TEXT SENT TO TELEGRAM", flush=True)
+
+        # IMAGE
+        elif message_type == "image":
+
+            print("Processing IMAGE", flush=True)
 
             media_id = message["image"]["id"]
             caption = message["image"].get("caption", "")
 
+            print("MEDIA ID:", media_id, flush=True)
+            print("CAPTION:", caption, flush=True)
+
+            print("Downloading WhatsApp image...", flush=True)
+
             photo = download_media(media_id)
+
+            print("PHOTO DOWNLOADED:", photo, flush=True)
 
             telegram_caption = (
                 "📷 WhatsApp Photo\n\n"
@@ -81,9 +98,20 @@ def webhook():
             if caption:
                 telegram_caption += f"📝 Caption:\n{caption}"
 
+            print("Sending photo to Telegram...", flush=True)
+
             send_photo(photo, telegram_caption)
 
+            print("PHOTO SENT TO TELEGRAM", flush=True)
+
+        else:
+
+            print("UNSUPPORTED MESSAGE TYPE:", message_type, flush=True)
+
     except Exception as e:
-        print("Error:", e)
+
+        print("========== ERROR ==========", flush=True)
+        print(type(e).__name__, flush=True)
+        print(str(e), flush=True)
 
     return "OK", 200
