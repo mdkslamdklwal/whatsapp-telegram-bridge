@@ -6,6 +6,21 @@ from config import WHATSAPP_ACCESS_TOKEN
 BASE_URL = "https://graph.facebook.com/v25.0"
 
 
+def test_access_token():
+    url = f"{BASE_URL}/1197057296831033"
+
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}"
+    }
+
+    response = requests.get(url, headers=headers)
+
+    print("========== TOKEN TEST ==========", flush=True)
+    print("HTTP STATUS:", response.status_code, flush=True)
+    print("RESPONSE:", response.text, flush=True)
+    print("================================", flush=True)
+
+
 def get_media_url(media_id):
 
     url = f"{BASE_URL}/{media_id}"
@@ -21,7 +36,11 @@ def get_media_url(media_id):
 
 def download_media(media_id):
 
+    # TEMPORARY: test the token before downloading the image
+    test_access_token()
+
     media = get_media_url(media_id)
+
     print("Media response:")
     print(media)
 
@@ -35,6 +54,7 @@ def download_media(media_id):
     }
 
     response = requests.get(media_url, headers=headers)
+
     print("Download status:", response.status_code)
 
     response.raise_for_status()
@@ -50,7 +70,4 @@ def download_media(media_id):
 
 
 if __name__ == "__main__":
-
-    media_id = input("Media ID: ")
-
-    print(get_media_url(media_id))
+    test_access_token()
