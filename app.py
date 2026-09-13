@@ -3,6 +3,8 @@ print("Processed IDs:", processed_messages)
 from flask import Flask, request
 from telegram_bot import send_message, send_photo
 from whatsapp_api import download_media
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
@@ -33,9 +35,18 @@ def webhook():
             return "OK", 200
 
         message = value["messages"][0]
-
         message_id = message["id"]
         message_type = message["type"]
+        message_timestamp = int(message["timestamp"])
+
+        message_time = datetime.fromtimestamp(
+        message_timestamp,
+            timezone.utc
+        ).astimezone(
+            ZoneInfo("Asia/Makassar")
+        )
+
+        formatted_time = message_time.strftime("%d %B %Y, %H:%M:%S")
 
         print("MESSAGE ID:", message_id, flush=True)
         print("MESSAGE TYPE:", message_type, flush=True)
@@ -73,36 +84,28 @@ def webhook():
             print("TEXT SENT TO TELEGRAM", flush=True)
 
         # IMAGE
-        elif message_type == "image":
+        elif message["type"] == "image":
 
-            print("Processing IMAGE", flush=True)
+    media_id = message["image"]["id"]
+    caption = message["image"].get("caption", "")
 
-            media_id = message["image"]["id"]
-            caption = message["image"].get("caption", "")
+    photo = download_media(media_id)
 
-            print("MEDIA ID:", media_id, flush=True)
-            print("CAPTION:", caption, flush=True)
+    telegram_message = (
+        "📷 WhatsApp Photo\n\n"
+        f"👤 {contact_name}\n"
+        f"📱 {sender}\n"
+        f"🕐 {formatted_time}\n\n"
+    )
 
-            print("Downloading WhatsApp image...", flush=True)
+    if caption:
+        telegram_message += f"📝 Caption:\n{caption}"
 
-            photo = download_media(media_id)
+        # Send information FIRST
+        send_message(telegram_message)
 
-            print("PHOTO DOWNLOADED:", photo, flush=True)
-
-            telegram_caption = (
-                "📷 WhatsApp Photo\n\n"
-                f"👤 {contact_name}\n"
-                f"📱 {sender}\n\n"
-            )
-
-            if caption:
-                telegram_caption += f"📝 Caption:\n{caption}"
-
-            print("Sending photo to Telegram...", flush=True)
-
-            send_photo(photo, telegram_caption)
-
-            print("PHOTO SENT TO TELEGRAM", flush=True)
+    # Send photo WITHOUT caption
+        send_photo(photo)
 
         else:
 
