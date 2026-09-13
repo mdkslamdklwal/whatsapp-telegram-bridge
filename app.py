@@ -4,12 +4,23 @@ from whatsapp_api import download_media
 
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from threading import Timer, Lock
+
 
 app = Flask(__name__)
 
 VERIFY_TOKEN = "datekin123"
 
 processed_messages = set()
+
+# Store photos temporarily before sending them
+pending_albums = {}
+
+# Prevent simultaneous album processing
+album_lock = Lock()
+
+# How long to wait for additional photos
+ALBUM_WAIT_SECONDS = 5
 
 
 @app.route("/")
@@ -49,9 +60,14 @@ def webhook():
         message = value["messages"][0]
         message_id = message["id"]
 
-        # Prevent duplicate webhook messages
+        # =========================
+        # DUPLICATE PROTECTION
+        # =========================
+
         if message_id in processed_messages:
+
             print("Duplicate ignored:", message_id)
+
             return "OK", 200
 
         processed_messages.add(message_id)
@@ -59,7 +75,22 @@ def webhook():
         print("MESSAGE ID:", message_id)
         print("TIMESTAMP:", message["timestamp"])
 
-        # WhatsApp timestamp → WITA
+        # =========================
+        # CONTACT INFORMATION
+        # =========================
+
+        sender = message["from"]
+
+        contact_name = sender
+
+        if "contacts" in value:
+
+            contact_name = value["contacts"][0]["profile"]["name"]
+
+        # =========================
+        # WHATSAPP TIMESTAMP
+        # =========================
+
         message_timestamp = int(message["timestamp"])
 
         message_time = datetime.fromtimestamp(
@@ -72,13 +103,6 @@ def webhook():
         formatted_time = message_time.strftime(
             "%d %B %Y, %H:%M:%S"
         )
-
-        sender = message["from"]
-
-        contact_name = sender
-
-        if "contacts" in value:
-            contact_name = value["contacts"][0]["profile"]["name"]
 
         # =========================
         # TEXT MESSAGE
@@ -103,28 +127,142 @@ def webhook():
         elif message["type"] == "image":
 
             media_id = message["image"]["id"]
+
             caption = message["image"].get("caption", "")
 
+            print("IMAGE RECEIVED:", media_id)
+            print("CAPTION:", caption)
+
+            # Download the photo now
             photo = download_media(media_id)
 
-            telegram_message = (
-                "📷 WhatsApp Photo\n\n"
-                f"👤 {contact_name}\n"
-                f"📱 {sender}\n"
-                f"🕐 {formatted_time} WITA\n\n"
-            )
+            # =========================
+            # CREATE ALBUM ENTRY
+            # =========================
 
-            if caption:
-                telegram_message += f"📝 Caption:\n{caption}"
+            album_data = {
+                "photo": photo,
+                "caption": caption,
+                "contact_name": contact_name,
+                "sender": sender,
+                "formatted_time": formatted_time,
+                "timestamp": message_timestamp
+            }
 
-                # Send information FIRST
-                send_message(telegram_message)
+            with album_lock:
 
-            # Send photo WITHOUT caption
-            send_photo(photo)
+                if sender not in pending_albums:
+
+                    pending_albums[sender] = {
+                        "photos": [],
+                        "timer": None
+                    }
+
+                pending_albums[sender]["photos"].append(album_data)
+
+                print(
+                    "Pending photos:",
+                    len(pending_albums[sender]["photos"])
+                )
+
+                # Cancel previous timer
+                old_timer = pending_albums[sender]["timer"]
+
+                if old_timer is not None:
+                    old_timer.cancel()
+
+                # Start a new timer
+                timer = Timer(
+                    ALBUM_WAIT_SECONDS,
+                    process_album,
+                    args=[sender]
+                )
+
+                timer.daemon = True
+
+                pending_albums[sender]["timer"] = timer
+
+                timer.start()
 
     except Exception as e:
 
         print("Error:", e)
 
     return "OK", 200
+
+
+# ==========================================
+# PROCESS COMPLETE WHATSAPP ALBUM
+# ==========================================
+
+def process_album(sender):
+
+    with album_lock:
+
+        if sender not in pending_albums:
+            return
+
+        album = pending_albums.pop(sender)
+
+    photos = album["photos"]
+
+    if not photos:
+        return
+
+    print(
+        "Processing album for",
+        sender,
+        "-",
+        len(photos),
+        "photos"
+    )
+
+    # ======================================
+    # FIND CAPTION
+    # ======================================
+
+    caption = ""
+
+    for item in photos:
+
+        if item["caption"]:
+
+            caption = item["caption"]
+
+            break
+
+    # Use information from first photo
+    first_photo = photos[0]
+
+    contact_name = first_photo["contact_name"]
+    formatted_time = first_photo["formatted_time"]
+
+    # ======================================
+    # SEND CAPTION FIRST
+    # ======================================
+
+    if caption:
+
+        telegram_message = (
+            "📷 WhatsApp Photo\n\n"
+            f"👤 {contact_name}\n"
+            f"📱 {sender}\n"
+            f"🕐 {formatted_time} WITA\n\n"
+            f"📝 Caption:\n{caption}"
+        )
+
+        print("Sending caption FIRST")
+
+        send_message(telegram_message)
+
+    # ======================================
+    # SEND ALL PHOTOS AFTER CAPTION
+    # ======================================
+
+    print("Sending", len(photos), "photos")
+
+    for item in photos:
+
+        print("Sending photo:", item["photo"])
+
+        send_photo(item["photo"])
